@@ -2,9 +2,6 @@
 const db = require("../../config/db");
 
 const Report = {
-  // ==========================================================
-  // DASHBOARD SUMMARY
-  // ==========================================================
 
   async getDashboardSummary() {
     const [

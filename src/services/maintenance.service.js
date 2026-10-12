@@ -1,11 +1,5 @@
 const Maintenance = require("../models/maintenance.model");
 
-const ALLOWED_STATUSES = [
-  "PENDING",
-  "IN_PROGRESS",
-  "COMPLETED",
-  "CANCELLED",
-];
 
 const MaintenanceService = {
   async getAllMaintenance() {
@@ -36,7 +30,6 @@ const MaintenanceService = {
       recorded_by: data.recorded_by ?? null,
     };
 
-    this.validateStatus(payload.status);
     this.validateCost(payload.cost);
 
     return Maintenance.create(payload);
@@ -61,7 +54,6 @@ const MaintenanceService = {
       status: data.status || existing.status || "PENDING",
     };
 
-    this.validateStatus(payload.status);
     this.validateCost(payload.cost);
 
     return Maintenance.update(id, payload);
@@ -73,8 +65,6 @@ const MaintenanceService = {
     if (!existing) {
       throw new Error("Maintenance record not found");
     }
-
-    this.validateStatus(status);
 
     return Maintenance.updateStatus(id, status);
   },
@@ -110,13 +100,6 @@ const MaintenanceService = {
     }
   },
 
-  validateStatus(status) {
-    if (!ALLOWED_STATUSES.includes(status)) {
-      throw new Error(
-        `Invalid maintenance status. Allowed values: ${ALLOWED_STATUSES.join(", ")}`
-      );
-    }
-  },
 
   validateCost(cost) {
     if (!Number.isFinite(cost) || cost < 0) {

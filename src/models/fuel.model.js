@@ -22,6 +22,7 @@ const Fuel = {
         f.recorded_by AS staff_id,
         f.created_at,
         b.registration_no,
+        b.depot_id,
         u.name AS recorded_by_name
       FROM fuel_logs f
       LEFT JOIN buses b ON b.id = f.bus_id
@@ -54,6 +55,7 @@ const Fuel = {
         f.recorded_by AS staff_id,
         f.created_at,
         b.registration_no,
+        b.depot_id,
         u.name AS recorded_by_name
       FROM fuel_logs f
       LEFT JOIN buses b ON b.id = f.bus_id

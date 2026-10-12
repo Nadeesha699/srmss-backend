@@ -1,4 +1,3 @@
-
 const ScheduleService = require("../services/schedule.service");
 
 // GET ALL SCHEDULES
@@ -89,17 +88,6 @@ const createSchedule = async (req, res) => {
       });
     }
 
-    // Validate schedule status against the database ENUM
-    const allowedStatuses = ["DRAFT", "SCHEDULED", "CANCELLED"];
-
-    if (status && !allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid schedule status.",
-      });
-    }
-
-    // Create schedule
     const id = await ScheduleService.createSchedule({
       schedule_code: schedule_code.trim(),
       route_id: Number(route_id),
@@ -120,13 +108,18 @@ const createSchedule = async (req, res) => {
   } catch (error) {
     console.error("Create schedule error:", error);
 
-    if (error.code === "ER_DUP_ENTRY") {
+    // Duplicate schedule code or schedule time conflict
+    if (error.code === "ER_DUP_ENTRY" || error.statusCode === 409) {
       return res.status(409).json({
         success: false,
-        message: "This schedule code already exists.",
+        message:
+          error.code === "ER_DUP_ENTRY"
+            ? "This schedule code already exists."
+            : error.message,
       });
     }
 
+    // Route or depot does not exist
     if (
       error.code === "ER_NO_REFERENCED_ROW_2" ||
       error.code === "ER_NO_REFERENCED_ROW"
@@ -150,10 +143,7 @@ const updateSchedule = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const affectedRows = await ScheduleService.updateSchedule(
-      id,
-      req.body
-    );
+    const affectedRows = await ScheduleService.updateSchedule(id, req.body);
 
     if (!affectedRows) {
       return res.status(404).json({
@@ -172,10 +162,25 @@ const updateSchedule = async (req, res) => {
   } catch (error) {
     console.error("Update schedule error:", error);
 
-    if (error.code === "ER_DUP_ENTRY") {
+    // Duplicate schedule code or schedule time conflict
+    if (error.code === "ER_DUP_ENTRY" || error.statusCode === 409) {
       return res.status(409).json({
         success: false,
-        message: "This schedule code already exists.",
+        message:
+          error.code === "ER_DUP_ENTRY"
+            ? "This schedule code already exists."
+            : error.message,
+      });
+    }
+
+    // Route or depot does not exist
+    if (
+      error.code === "ER_NO_REFERENCED_ROW_2" ||
+      error.code === "ER_NO_REFERENCED_ROW"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "The selected route or depot does not exist.",
       });
     }
 
@@ -230,10 +235,7 @@ const updateStatus = async (req, res) => {
       });
     }
 
-    const affectedRows = await ScheduleService.updateScheduleStatus(
-      id,
-      status
-    );
+    const affectedRows = await ScheduleService.updateScheduleStatus(id, status);
 
     if (!affectedRows) {
       return res.status(404).json({

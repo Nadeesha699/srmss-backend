@@ -352,8 +352,6 @@ const assignmentService = {
       throw new Error("Selected staff account is not active");
     }
 
-    // A bus, driver or staff member cannot be assigned to
-    // overlapping services on the same date.
     for (const [resource, id] of [
       ["bus", bus_id],
       ["driver", driver_id],
@@ -375,20 +373,89 @@ const assignmentService = {
   },
 
   async create(data) {
-    await this.validate(data);
+    const connection = await db.getConnection();
 
-    const assignmentId = await Assignment.create(data);
+    try {
+      await connection.beginTransaction();
 
-    await Trip.create({
-      schedule_id: data.schedule_id,
-      assignment_id: assignmentId,
-      status: "SCHEDULED",
-    });
+      // 1. Validate the schedule, bus, driver and staff
+      await this.validate(data);
 
-    return {
-      assignment_id: assignmentId,
-      message: "Assignment and trip created successfully",
-    };
+      // 2. Create assignment
+      const [assignmentResult] = await connection.execute(
+        `INSERT INTO assignments
+       (schedule_id, bus_id, driver_id, staff_id, assigned_by, status)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          data.schedule_id,
+          data.bus_id,
+          data.driver_id,
+          data.staff_id,
+          data.assigned_by,
+          "ASSIGNED",
+        ],
+      );
+
+      const assignmentId = assignmentResult.insertId;
+
+      // 3. Create trip (not started yet)
+      await connection.execute(
+        `INSERT INTO trips
+       (schedule_id, assignment_id, status)
+       VALUES (?, ?, ?)`,
+        [data.schedule_id, assignmentId, "SCHEDULED"],
+      );
+
+      // 4. Update schedule status
+      const [scheduleResult] = await connection.execute(
+        `UPDATE schedules
+       SET status = 'ASSIGNED'
+       WHERE id = ? AND status = 'SCHEDULED'`,
+        [data.schedule_id],
+      );
+
+      if (scheduleResult.affectedRows !== 1) {
+        throw new Error("Schedule is no longer available for assignment");
+      }
+
+      // 5. Update bus status
+      const [busResult] = await connection.execute(
+        `UPDATE buses
+       SET status = 'ASSIGNED'
+       WHERE id = ? AND status = 'AVAILABLE'`,
+        [data.bus_id],
+      );
+
+      if (busResult.affectedRows !== 1) {
+        throw new Error("Bus is no longer available");
+      }
+
+      // 6. Update driver status
+      const [driverResult] = await connection.execute(
+        `UPDATE drivers
+       SET status = 'ON_DUTY'
+       WHERE id = ? AND status = 'AVAILABLE'`,
+        [data.driver_id],
+      );
+
+      if (driverResult.affectedRows !== 1) {
+        throw new Error("Driver is no longer available");
+      }
+
+      // 7. Commit all changes
+      await connection.commit();
+
+      return {
+        assignment_id: assignmentId,
+        message:
+          "Assignment created, trip scheduled, schedule updated, bus assigned and driver marked on duty",
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   },
 
   async update(id, data) {

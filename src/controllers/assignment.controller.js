@@ -213,7 +213,7 @@ const handleError = (res, error) => {
 };
 
 const assignmentController = {
-  async getAll(req, res) {
+  async getAll(_, res) {
     try {
       const data = await assignmentService.getAll();
       res.json({ success: true, data });

@@ -10,10 +10,32 @@ const ScheduleService = {
   },
 
   async createSchedule(data) {
+    const conflict = await ScheduleModel.findTimeConflict(data);
+
+    if (conflict) {
+      const error = new Error(
+        `Schedule conflicts with ${conflict.schedule_code} ` +
+          `(${conflict.departure_time} - ${conflict.arrival_time}).`,
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+
     return await ScheduleModel.create(data);
   },
 
   async updateSchedule(id, data) {
+    const conflict = await ScheduleModel.findTimeConflict(data, id);
+
+    if (conflict) {
+      const error = new Error(
+        `Schedule conflicts with ${conflict.schedule_code} ` +
+          `(${conflict.departure_time} - ${conflict.arrival_time}).`,
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+
     return await ScheduleModel.update(id, data);
   },
 
@@ -22,17 +44,6 @@ const ScheduleService = {
   },
 
   async updateScheduleStatus(id, status) {
-    const allowedStatuses = [
-      "SCHEDULED",
-      "RUNNING",
-      "COMPLETED",
-      "CANCELLED",
-    ];
-
-    if (!allowedStatuses.includes(status)) {
-      throw new Error("Invalid schedule status");
-    }
-
     return await ScheduleModel.updateStatus(id, status);
   },
 };

@@ -37,15 +37,9 @@ const tripService = {
     return await Trip.findById(id);
   },
 
-   async updateStatus(id, data) {
-    const affectedRows = await Trip.updateStatus(id, data);
-
-    if (affectedRows === 0) {
-      throw new Error("Trip not found or no changes made");
-    }
-
-    return affectedRows;
-  },
+ async updateStatus(id, data) {
+  return await Trip.updateStatus(id, data);
+},
 };
 
 

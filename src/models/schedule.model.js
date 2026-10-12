@@ -1,4 +1,3 @@
-
 const db = require("../../config/db");
 
 const ScheduleModel = {
@@ -73,7 +72,7 @@ const ScheduleModel = {
 
       WHERE s.id = ?
       `,
-      [id]
+      [id],
     );
 
     return rows[0] || null;
@@ -102,7 +101,7 @@ const ScheduleModel = {
         data.departure_time,
         data.arrival_time,
         data.status || "SCHEDULED",
-      ]
+      ],
     );
 
     return result.insertId;
@@ -132,7 +131,7 @@ const ScheduleModel = {
         data.arrival_time,
         data.status || "SCHEDULED",
         id,
-      ]
+      ],
     );
 
     return result.affectedRows;
@@ -145,7 +144,7 @@ const ScheduleModel = {
       DELETE FROM schedules
       WHERE id = ?
       `,
-      [id]
+      [id],
     );
 
     return result.affectedRows;
@@ -159,10 +158,47 @@ const ScheduleModel = {
       SET status = ?
       WHERE id = ?
       `,
-      [status, id]
+      [status, id],
     );
 
     return result.affectedRows;
+  },
+
+  // Check whether another schedule uses the same route
+  // on the same date during an overlapping time period.
+  async findTimeConflict(data, excludeId = null) {
+    if (data.status === "CANCELLED") {
+      return null;
+    }
+
+    let sql = `
+    SELECT id, schedule_code, departure_time, arrival_time
+    FROM schedules
+    WHERE route_id = ?
+      AND schedule_date = ?
+      AND status <> 'CANCELLED'
+      AND departure_time < ?
+      AND arrival_time > ?
+  `;
+
+    const params = [
+      Number(data.route_id),
+      data.schedule_date,
+      data.arrival_time,
+      data.departure_time,
+    ];
+
+    // Exclude the current schedule when editing it.
+    if (excludeId !== null) {
+      sql += " AND id <> ?";
+      params.push(Number(excludeId));
+    }
+
+    sql += " LIMIT 1";
+
+    const [rows] = await db.execute(sql, params);
+
+    return rows.length > 0 ? rows[0] : null;
   },
 };
 

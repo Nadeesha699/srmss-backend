@@ -1,8 +1,7 @@
-
 const db = require("../../config/db");
 
 const Delay = {
-  // Get all delay reports
+  // Get all delay reports with related table details
   async findAll() {
     const [rows] = await db.execute(`
       SELECT
@@ -13,44 +12,39 @@ const Delay = {
         dl.notes,
         dl.recorded_by,
         dl.recorded_at,
+
         t.status AS trip_status,
+        t.assignment_id,
+
+        a.schedule_id,
+        a.bus_id,
+
+        s.depot_id,
+        s.route_id,
+
+        b.registration_no,
+
         u.name AS recorded_by_name
+
       FROM delays dl
-      INNER JOIN trips t ON dl.trip_id = t.id
-      LEFT JOIN users u ON dl.recorded_by = u.id
+      INNER JOIN trips t
+        ON dl.trip_id = t.id
+      LEFT JOIN assignments a
+        ON t.assignment_id = a.id
+      LEFT JOIN schedules s
+        ON a.schedule_id = s.id
+      LEFT JOIN buses b
+        ON a.bus_id = b.id
+      LEFT JOIN users u
+        ON dl.recorded_by = u.id
+
       ORDER BY dl.recorded_at DESC
     `);
 
     return rows;
   },
 
-  // Get reports belonging to a particular user
-  async findByUserId(userId) {
-    const [rows] = await db.execute(
-      `
-      SELECT
-        dl.id,
-        dl.trip_id,
-        dl.delay_minutes,
-        dl.reason,
-        dl.notes,
-        dl.recorded_by,
-        dl.recorded_at,
-        t.status AS trip_status,
-        u.name AS recorded_by_name
-      FROM delays dl
-      INNER JOIN trips t ON dl.trip_id = t.id
-      LEFT JOIN users u ON dl.recorded_by = u.id
-      WHERE dl.recorded_by = ?
-      ORDER BY dl.recorded_at DESC
-      `,
-      [userId]
-    );
-
-    return rows;
-  },
-
-  // Get one report
+  // Get one delay report by its ID
   async findById(id) {
     const [rows] = await db.execute(
       `
@@ -62,19 +56,42 @@ const Delay = {
         dl.notes,
         dl.recorded_by,
         dl.recorded_at,
+
         t.status AS trip_status,
+        t.assignment_id,
+
+        a.schedule_id,
+        a.bus_id,
+
+        s.depot_id,
+        s.route_id,
+
+        b.registration_no,
+
+
         u.name AS recorded_by_name
+
       FROM delays dl
-      INNER JOIN trips t ON dl.trip_id = t.id
-      LEFT JOIN users u ON dl.recorded_by = u.id
+      INNER JOIN trips t
+        ON dl.trip_id = t.id
+      LEFT JOIN assignments a
+        ON t.assignment_id = a.id
+      LEFT JOIN schedules s
+        ON a.schedule_id = s.id
+      LEFT JOIN buses b
+        ON a.bus_id = b.id
+      LEFT JOIN users u
+        ON dl.recorded_by = u.id
+
       WHERE dl.id = ?
       LIMIT 1
       `,
-      [id]
+      [id],
     );
 
     return rows[0] || null;
   },
+
 
   // Create a report
   async create(data) {
@@ -95,7 +112,7 @@ const Delay = {
         data.reason,
         data.notes || null,
         data.recorded_by,
-      ]
+      ],
     );
 
     return result.insertId;
@@ -112,12 +129,7 @@ const Delay = {
         notes = ?
       WHERE id = ?
       `,
-      [
-        data.delay_minutes,
-        data.reason,
-        data.notes || null,
-        id,
-      ]
+      [data.delay_minutes, data.reason, data.notes || null, id],
     );
 
     return result.affectedRows;
@@ -125,10 +137,7 @@ const Delay = {
 
   // Delete a report
   async delete(id) {
-    const [result] = await db.execute(
-      "DELETE FROM delays WHERE id = ?",
-      [id]
-    );
+    const [result] = await db.execute("DELETE FROM delays WHERE id = ?", [id]);
 
     return result.affectedRows;
   },
