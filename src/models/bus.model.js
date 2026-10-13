@@ -83,9 +83,6 @@ const Bus = {
     return rows[0];
   },
 
-  // =========================================================
-  // CREATE BUS
-  // =========================================================
   async create(data) {
     const [result] = await db.execute(
       `
@@ -113,9 +110,6 @@ const Bus = {
     return result.insertId;
   },
 
-  // =========================================================
-  // UPDATE BUS
-  // =========================================================
   async update(id, data) {
     const [result] = await db.execute(
       `

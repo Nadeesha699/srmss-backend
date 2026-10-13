@@ -51,6 +51,30 @@ const routeService = {
     return await RouteModel.findById(id);
   },
 
+  async updateRouteStatus(id, status) {
+  const routeId = Number(id);
+
+  if (!Number.isInteger(routeId) || routeId <= 0) {
+    throw new Error("Invalid route ID.");
+  }
+
+
+  const result = await RouteModel.updateRouteStatus(
+    routeId,
+    status
+  );
+
+  if (result.affectedRows === 0) {
+    throw new Error("Route not found.");
+  }
+
+  return {
+    id: routeId,
+    status,
+  };
+},
+
+
   async deleteRoute(id) {
     const route = await RouteModel.findById(id);
 

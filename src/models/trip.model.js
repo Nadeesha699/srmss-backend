@@ -150,9 +150,7 @@ const Trip = {
     return rows[0];
   },
 
-  /* =========================================================
-     CREATE TRIP
-  ========================================================= */
+
 
   async create(data) {
     const [result] = await db.execute(
@@ -171,9 +169,6 @@ const Trip = {
     return result.insertId;
   },
 
-  /* =========================================================
-     UPDATE TRIP
-  ========================================================= */
 
   async update(id, data) {
     const [result] = await db.execute(
@@ -195,47 +190,94 @@ const Trip = {
     return result.affectedRows;
   },
 
-  /* =========================================================
-     UPDATE TRIP STATUS
-  ========================================================= */
 
-  async updateStatus(id, data) {
-    const connection = await db.getConnection();
+async updateStatus(id, data) {
+  const connection = await db.getConnection();
 
-    try {
-      await connection.beginTransaction();
+  try {
+    await connection.beginTransaction();
 
-      // 1. Get the trip and lock its row
-      const [trips] = await connection.execute(
-        `SELECT id, schedule_id, assignment_id, status
+    // 1. Lock and retrieve the trip.
+    const [trips] = await connection.execute(
+      `SELECT id, schedule_id, assignment_id, status
        FROM trips
        WHERE id = ?
        FOR UPDATE`,
-        [id],
+      [id]
+    );
+
+    if (!trips.length) {
+      throw new Error("Trip not found");
+    }
+
+    const trip = trips[0];
+    const currentStatus = String(trip.status).toUpperCase();
+    const nextStatus = String(data.status || "").toUpperCase();
+
+    if (!["IN_PROGRESS", "COMPLETED"].includes(nextStatus)) {
+      throw new Error("Invalid trip status");
+    }
+
+    if (currentStatus === "COMPLETED") {
+      throw new Error("Trip is already completed");
+    }
+
+    if (currentStatus === "CANCELLED") {
+      throw new Error("A cancelled trip cannot be updated");
+    }
+
+    // 2. Validate allowed transitions.
+    const allowedTransitions = {
+      SCHEDULED: ["IN_PROGRESS"],
+      IN_PROGRESS: ["COMPLETED"],
+      DELAYED: ["IN_PROGRESS", "COMPLETED"],
+    };
+
+    const allowedNextStatuses = allowedTransitions[currentStatus] || [];
+
+    if (!allowedNextStatuses.includes(nextStatus)) {
+      throw new Error(
+        `Cannot change trip status from ${currentStatus} to ${nextStatus}`
+      );
+    }
+
+    // 3. Retrieve assignment resources.
+    let busId = null;
+    let driverId = null;
+
+    if (trip.assignment_id) {
+      const [assignments] = await connection.execute(
+        `SELECT id, bus_id, driver_id, staff_id, status
+         FROM assignments
+         WHERE id = ?
+         FOR UPDATE`,
+        [trip.assignment_id]
       );
 
-      if (!trips.length) {
-        throw new Error("Trip not found");
+      if (!assignments.length) {
+        throw new Error("Trip assignment not found");
       }
 
-      const trip = trips[0];
-      const nextStatus = data.status;
+      const assignment = assignments[0];
 
-      if (!["IN_PROGRESS", "COMPLETED"].includes(nextStatus)) {
-        throw new Error("Invalid trip status");
+      busId = assignment.bus_id;
+      driverId = assignment.driver_id;
+
+      if (!assignment.bus_id) {
+        throw new Error("No bus is assigned to this trip");
       }
 
-      if (trip.status === "COMPLETED") {
-        throw new Error("Trip is already completed");
+      if (!assignment.staff_id) {
+        throw new Error("No operational staff member is assigned to this trip");
       }
+    }
 
-      if (nextStatus === "COMPLETED" && trip.status !== "IN_PROGRESS") {
-        throw new Error("Start the trip before completing it");
-      }
+    // 4. Update trip status and preserve the original start time
+    // when resuming a delayed trip.
+    const now = new Date();
 
-      // 2. Update trip status and timestamps
-      await connection.execute(
-        `UPDATE trips
+    await connection.execute(
+      `UPDATE trips
        SET status = ?,
            actual_start_time = CASE
              WHEN ? = 'IN_PROGRESS'
@@ -244,139 +286,131 @@ const Trip = {
            END,
            actual_end_time = CASE
              WHEN ? = 'COMPLETED' THEN ?
-             ELSE actual_end_time
+             ELSE NULL
            END
        WHERE id = ?`,
-        [
-          nextStatus,
-          nextStatus,
-          data.actual_start_time || new Date(),
-          nextStatus,
-          data.actual_end_time || new Date(),
-          id,
-        ],
-      );
+      [
+        nextStatus,
+        nextStatus,
+        data.actual_start_time || now,
+        nextStatus,
+        data.actual_end_time || now,
+        id,
+      ]
+    );
 
-      let busId = null;
-      let driverId = null;
-
-      // 3. Update assignment status and get bus/driver IDs
-      if (trip.assignment_id) {
-        const [assignments] = await connection.execute(
-          `SELECT bus_id, driver_id
-         FROM assignments
-         WHERE id = ?
-         FOR UPDATE`,
-          [trip.assignment_id],
-        );
-
-        if (assignments.length > 0) {
-          busId = assignments[0].bus_id;
-          driverId = assignments[0].driver_id;
-        }
-
-        await connection.execute(
-          `UPDATE assignments
+    // 5. Keep the assignment active until the trip is completed.
+    // A delayed trip still retains its bus, driver, and staff assignment.
+    if (trip.assignment_id) {
+      await connection.execute(
+        `UPDATE assignments
          SET status = ?
          WHERE id = ?`,
-          [nextStatus, trip.assignment_id],
-        );
-      }
+        [
+          nextStatus === "COMPLETED" ? "COMPLETED" : "ASSIGNED",
+          trip.assignment_id,
+        ]
+      );
+    }
 
-      // 4. Update schedule when trip starts
-      if (nextStatus === "IN_PROGRESS") {
-        await connection.execute(
-          `UPDATE schedules
+    // 6. Update the schedule when the trip starts or resumes.
+    if (nextStatus === "IN_PROGRESS") {
+      await connection.execute(
+        `UPDATE schedules
          SET status = 'IN_PROGRESS'
-         WHERE id = ?`,
-          [trip.schedule_id],
-        );
-      }
+         WHERE id = ?
+           AND status <> 'CANCELLED'`,
+        [trip.schedule_id]
+      );
+    }
 
-      // 5. Complete schedule only when all required trips are completed
-      if (nextStatus === "COMPLETED") {
-        const [remaining] = await connection.execute(
-          `SELECT COUNT(*) AS total
+    // 7. Complete the schedule only when every trip is completed.
+    if (nextStatus === "COMPLETED") {
+      const [remainingTrips] = await connection.execute(
+        `SELECT COUNT(*) AS total
          FROM trips
          WHERE schedule_id = ?
            AND status <> 'COMPLETED'`,
-          [trip.schedule_id],
-        );
+        [trip.schedule_id]
+      );
 
-        if (Number(remaining[0].total) === 0) {
-          await connection.execute(
-            `UPDATE schedules
+      if (Number(remainingTrips[0].total) === 0) {
+        await connection.execute(
+          `UPDATE schedules
            SET status = 'COMPLETED'
-           WHERE id = ?`,
-            [trip.schedule_id],
-          );
-        }
+           WHERE id = ?
+             AND status <> 'CANCELLED'`,
+          [trip.schedule_id]
+        );
+      }
 
-        // 6. Release bus if it has no other active assignments
-        if (busId !== null) {
-          const [busAssignments] = await connection.execute(
-            `SELECT COUNT(*) AS total
+      // 8. Release the bus only if no other active assignment uses it.
+      if (busId !== null) {
+        const [busAssignments] = await connection.execute(
+          `SELECT COUNT(*) AS total
            FROM assignments
            WHERE bus_id = ?
              AND id <> ?
              AND status IN ('ASSIGNED', 'IN_PROGRESS')`,
-            [busId, trip.assignment_id],
-          );
+          [busId, trip.assignment_id],
+        );
 
-          if (Number(busAssignments[0].total) === 0) {
-            await connection.execute(
-              `UPDATE buses
+        if (Number(busAssignments[0].total) === 0) {
+          await connection.execute(
+            `UPDATE buses
              SET status = 'AVAILABLE'
              WHERE id = ?
                AND status = 'ASSIGNED'`,
-              [busId],
-            );
-          }
+            [busId]
+          );
         }
+      }
 
-        // 7. Release driver if there are no other active assignments
-        if (driverId !== null) {
-          const [driverAssignments] = await connection.execute(
-            `SELECT COUNT(*) AS total
+      // 9. Release the driver only if no other active assignment uses them.
+      if (driverId !== null) {
+        const [driverAssignments] = await connection.execute(
+          `SELECT COUNT(*) AS total
            FROM assignments
            WHERE driver_id = ?
              AND id <> ?
              AND status IN ('ASSIGNED', 'IN_PROGRESS')`,
-            [driverId, trip.assignment_id],
-          );
+          [driverId, trip.assignment_id]
+        );
 
-          if (Number(driverAssignments[0].total) === 0) {
-            await connection.execute(
-              `UPDATE drivers
+        if (Number(driverAssignments[0].total) === 0) {
+          await connection.execute(
+            `UPDATE drivers
              SET status = 'AVAILABLE'
              WHERE id = ?
                AND status = 'ON_DUTY'`,
-              [driverId],
-            );
-          }
+            [driverId]
+          );
         }
       }
-
-      // 8. Commit all changes together
-      await connection.commit();
-
-      return {
-        affectedRows: 1,
-        trip_status: nextStatus,
-        assignment_status: nextStatus,
-        assignment_id: trip.assignment_id,
-        schedule_id: trip.schedule_id,
-        bus_id: busId,
-        driver_id: driverId,
-        resources_released: nextStatus === "COMPLETED",
-      };
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
     }
-  },
+
+    // 10. Commit all changes together.
+    await connection.commit();
+
+    return {
+      affectedRows: 1,
+      trip_status: nextStatus,
+      assignment_status:
+        nextStatus === "COMPLETED" ? "COMPLETED" : "ASSIGNED",
+      assignment_id: trip.assignment_id,
+      schedule_id: trip.schedule_id,
+      bus_id: busId,
+      driver_id: driverId,
+      resources_released: nextStatus === "COMPLETED",
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 };
 
 module.exports = Trip;

@@ -82,9 +82,6 @@ const RouteModel = {
     return rows[0];
   },
 
-  /* =========================================================
-     CREATE ROUTE
-  ========================================================= */
 
   async create(data) {
     const connection = await db.getConnection();
@@ -119,12 +116,7 @@ const RouteModel = {
         ]
       );
 
-      /*
-       * Optional route_stops support.
-       *
-       * If data.stops is an array of stop names,
-       * save them into route_stops.
-       */
+   
 
       if (Array.isArray(data.stops)) {
         for (let i = 0; i < data.stops.length; i++) {
@@ -158,9 +150,6 @@ const RouteModel = {
     }
   },
 
-  /* =========================================================
-     UPDATE ROUTE
-  ========================================================= */
 
   async update(id, data) {
     const [result] = await db.execute(
@@ -193,21 +182,27 @@ const RouteModel = {
     return result.affectedRows;
   },
 
-  /* =========================================================
-     DELETE ROUTE
-  ========================================================= */
+
+
+async updateRouteStatus (id, status){
+  const sql = `
+    UPDATE routes
+    SET status = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `;
+
+  const [result] = await db.execute(sql, [status, id]);
+
+  return result;
+},
+
+
 
   async delete(id) {
     const connection = await db.getConnection();
 
     try {
       await connection.beginTransaction();
-
-      /*
-       * Delete route stops first.
-       * This is useful if route_stops has a foreign key
-       * referencing routes.id.
-       */
 
       await connection.execute(
         `

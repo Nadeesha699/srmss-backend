@@ -32,9 +32,7 @@ const tripService = {
       throw new Error("Trip not found");
     }
 
-    await Trip.update(id, data);
-
-    return await Trip.findById(id);
+    return await Trip.update(id, data);
   },
 
  async updateStatus(id, data) {

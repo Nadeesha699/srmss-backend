@@ -18,9 +18,7 @@ const getRouteById = async (req, res) => {
   try {
     res.json({
       success: true,
-      data: await routeService.getRouteById(
-        req.params.id
-      ),
+      data: await routeService.getRouteById(req.params.id),
     });
   } catch (error) {
     res.status(404).json({
@@ -50,15 +48,50 @@ const updateRoute = async (req, res) => {
     res.json({
       success: true,
       message: "Route updated successfully",
-      data: await routeService.updateRoute(
-        req.params.id,
-        req.body
-      ),
+      data: await routeService.updateRoute(req.params.id, req.body),
     });
   } catch (error) {
     res.status(400).json({
       success: false,
       message: error.message,
+    });
+  }
+};
+
+const updateRouteStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required.",
+      });
+    }
+
+    const route = await routeService.updateRouteStatus(id, status);
+
+    return res.status(200).json({
+      success: true,
+      message: "Route status updated successfully.",
+      data: route,
+    });
+  } catch (error) {
+    const message = error.message || "Failed to update route status.";
+
+    const statusCode =
+      message === "Route not found."
+        ? 404
+        : message.startsWith("Invalid")
+          ? 400
+          : 500;
+
+    console.error("Update route status error:", error);
+
+    return res.status(statusCode).json({
+      success: false,
+      message,
     });
   }
 };
@@ -84,5 +117,6 @@ module.exports = {
   getRouteById,
   createRoute,
   updateRoute,
+  updateRouteStatus,
   deleteRoute,
 };
