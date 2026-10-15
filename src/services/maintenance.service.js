@@ -1,5 +1,5 @@
 const Maintenance = require("../models/maintenance.model");
-
+const Bus = require("../models/bus.model")
 
 const MaintenanceService = {
   async getAllMaintenance() {
@@ -59,15 +59,26 @@ const MaintenanceService = {
     return Maintenance.update(id, payload);
   },
 
-  async updateMaintenanceStatus(id, status) {
-    const existing = await Maintenance.findById(id);
+ async updateMaintenanceStatus(id, status) {
+  const existing = await Maintenance.findById(id);
 
-    if (!existing) {
-      throw new Error("Maintenance record not found");
-    }
+  if (!existing) {
+    throw new Error("Maintenance record not found");
+  }
 
-    return Maintenance.updateStatus(id, status);
-  },
+  // Update the maintenance status first
+  const updatedMaintenance = await Maintenance.updateStatus(id, status);
+
+  // When maintenance is completed, make the bus available
+  if (status === "COMPLETED") {
+    await Bus.updateStatus(existing.bus_id, "AVAILABLE");
+  } else {
+    // For ongoing maintenance, keep the bus under maintenance
+    await Bus.updateStatus(existing.bus_id, "MAINTENANCE");
+  }
+
+  return updatedMaintenance;
+},
 
   async deleteMaintenance(id) {
     const existing = await Maintenance.findById(id);

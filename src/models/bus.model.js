@@ -2,9 +2,6 @@
 const db = require("../../config/db");
 
 const Bus = {
-  // =========================================================
-  // GET ALL BUSES
-  // =========================================================
   async findAll() {
     const [rows] = await db.execute(`
       SELECT 
@@ -176,6 +173,22 @@ const Bus = {
 
     return rows;
   },
+
+  async updateStatus(id, status) {
+  const sql = `
+    UPDATE buses
+    SET status = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `;
+
+  const [result] = await db.execute(sql, [status, id]);
+
+  if (result.affectedRows === 0) {
+    throw new Error("Bus not found");
+  }
+
+  return this.findById(id);
+},
 };
 
 module.exports = Bus;
