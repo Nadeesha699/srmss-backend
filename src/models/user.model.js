@@ -76,15 +76,15 @@ const User = {
 
       const userId = result.insertId;
 
-      // Automatically assign the supervisor as depot manager
-      if (data.role === "SUPERVISOR" && data.depot_id) {
-        await connection.execute(
-          `UPDATE depots
-           SET manager_id = ?
-           WHERE id = ?`,
-          [userId, data.depot_id],
-        );
-      }
+      // // Automatically assign the supervisor as depot manager
+      // if (data.role === "SUPERVISOR" && data.depot_id) {
+      //   await connection.execute(
+      //     `UPDATE depots
+      //      SET manager_id = ?
+      //      WHERE id = ?`,
+      //     [userId, data.depot_id],
+      //   );
+      // }
 
       await connection.commit();
       return userId;
