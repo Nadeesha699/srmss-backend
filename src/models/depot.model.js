@@ -191,9 +191,6 @@ const Depot = {
     }
   },
 
-  // =========================================================
-  // UPDATE DEPOT
-  // =========================================================
   async update(id, data) {
     const connection = await db.getConnection();
 
@@ -308,9 +305,6 @@ const Depot = {
     }
   },
 
-  // =========================================================
-  // CHANGE DEPOT STATUS
-  // =========================================================
   async updateStatus(id, status) {
     const [result] = await db.execute(
       `
@@ -326,9 +320,6 @@ const Depot = {
     return result.affectedRows;
   },
 
-  // =========================================================
-  // DELETE DEPOT
-  // =========================================================
   async delete(id) {
     const [result] = await db.execute(
       `
@@ -339,6 +330,18 @@ const Depot = {
     );
 
     return result.affectedRows;
+  },
+
+  async findByManagerId(managerId) {
+    const [rows] = await db.execute(
+      `SELECT id, depot_code, name, manager_id
+     FROM depots
+     WHERE manager_id = ?
+     LIMIT 1`,
+      [managerId],
+    );
+
+    return rows[0] || null;
   },
 };
 

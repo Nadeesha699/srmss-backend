@@ -201,6 +201,19 @@ const User = {
 
     return result.affectedRows;
   },
+
+  async findByDepotId(depotId) {
+  const [rows] = await db.execute(
+    `SELECT id, name, role, depot_id
+     FROM users
+     WHERE depot_id = ?
+       AND role = 'SUPERVISOR'
+     LIMIT 1`,
+    [depotId]
+  );
+
+  return rows[0] || null;
+},
 };
 
 module.exports = User;

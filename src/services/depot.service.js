@@ -33,7 +33,7 @@ const depotService = {
       throw new Error("Manager ID is required");
     }
 
-    // Check manager
+    // Check manager exists
     const manager = await User.findById(data.manager_id);
 
     if (!manager) {
@@ -41,27 +41,35 @@ const depotService = {
     }
 
     if (manager.role !== "SUPERVISOR") {
-      throw new Error("Selected user is not a manager");
+      throw new Error("Selected user is not a supervisor");
+    }
+
+    // Check whether supervisor already manages a depot
+    const existingManagedDepot = await Depot.findByManagerId(
+      Number(data.manager_id),
+    );
+
+    if (existingManagedDepot) {
+      throw new Error(
+        `This supervisor already manages depot: ${existingManagedDepot.name}`,
+      );
     }
 
     // Check duplicate depot code
-    const existingDepot = await Depot.findByCode(
-      data.depot_code.trim()
-    );
+    const existingDepot = await Depot.findByCode(data.depot_code.trim());
 
     if (existingDepot) {
       throw new Error("Depot code already exists");
     }
 
+    // Validate status
     const allowedStatuses = ["ACTIVE", "INACTIVE"];
 
-    if (
-      data.status &&
-      !allowedStatuses.includes(data.status)
-    ) {
+    if (data.status && !allowedStatuses.includes(data.status)) {
       throw new Error("Invalid depot status");
     }
 
+    // Create depot
     const depotId = await Depot.create({
       depot_code: data.depot_code.trim(),
       name: data.name.trim(),
@@ -96,6 +104,7 @@ const depotService = {
       throw new Error("Manager ID is required");
     }
 
+    // Check manager exists
     const manager = await User.findById(data.manager_id);
 
     if (!manager) {
@@ -103,29 +112,38 @@ const depotService = {
     }
 
     if (manager.role !== "SUPERVISOR") {
-      throw new Error("Selected user is not a manager");
+      throw new Error("Selected user is not a supervisor");
     }
 
-    const depotWithSameCode = await Depot.findByCode(
-      data.depot_code.trim()
+    // Check whether supervisor manages another depot
+    const existingManagedDepot = await Depot.findByManagerId(
+      Number(data.manager_id),
     );
 
     if (
-      depotWithSameCode &&
-      Number(depotWithSameCode.id) !== Number(id)
+      existingManagedDepot &&
+      Number(existingManagedDepot.id) !== Number(id)
     ) {
+      throw new Error(
+        `This supervisor already manages depot: ${existingManagedDepot.name}`,
+      );
+    }
+
+    // Check duplicate depot code
+    const depotWithSameCode = await Depot.findByCode(data.depot_code.trim());
+
+    if (depotWithSameCode && Number(depotWithSameCode.id) !== Number(id)) {
       throw new Error("Depot code already exists");
     }
 
+    // Validate status
     const allowedStatuses = ["ACTIVE", "INACTIVE"];
 
-    if (
-      data.status &&
-      !allowedStatuses.includes(data.status)
-    ) {
+    if (data.status && !allowedStatuses.includes(data.status)) {
       throw new Error("Invalid depot status");
     }
 
+    // Update depot
     await Depot.update(id, {
       depot_code: data.depot_code.trim(),
       name: data.name.trim(),
@@ -162,12 +180,9 @@ const depotService = {
       throw new Error("Depot not found");
     }
 
-    if (
-      Number(depot.total_buses) > 0 ||
-      Number(depot.total_drivers) > 0
-    ) {
+    if (Number(depot.total_buses) > 0 || Number(depot.total_drivers) > 0) {
       throw new Error(
-        "Cannot delete depot because buses or drivers are assigned to it"
+        "Cannot delete depot because buses or drivers are assigned to it",
       );
     }
 
