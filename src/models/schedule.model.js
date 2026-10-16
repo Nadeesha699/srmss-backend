@@ -164,10 +164,8 @@ const ScheduleModel = {
     return result.affectedRows;
   },
 
-  // Check whether another schedule uses the same route
-  // on the same date during an overlapping time period.
   async findTimeConflict(data, excludeId = null) {
-    if (data.status === "CANCELLED") {
+    if (["CANCELLED", "COMPLETED"].includes(data.status)) {
       return null;
     }
 
@@ -176,7 +174,7 @@ const ScheduleModel = {
     FROM schedules
     WHERE route_id = ?
       AND schedule_date = ?
-      AND status <> 'CANCELLED'
+      AND status NOT IN ('CANCELLED', 'COMPLETED')
       AND departure_time < ?
       AND arrival_time > ?
   `;
